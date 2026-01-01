@@ -1,0 +1,186 @@
+<link href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&display=swap" rel="stylesheet">
+<style>
+    :root { --main-bg: #1a1a1a; --accent: #4CAF50; }
+    
+    .pfp-container {
+        background: var(--main-bg);
+        padding: 20px;
+        border-radius: 12px;
+        font-family: 'Dela Gothic One', cursive;
+        color: white;
+        text-align: center;
+        width: 100%;
+        box-sizing: border-box;
+    }
+    .pfp-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-bottom: 15px;
+    }
+    .file-input-label {
+        background: white; color: black; padding: 8px 12px;
+        border-radius: 4px; font-size: 11px; cursor: pointer;
+    }
+    .control-item { display: flex; flex-direction: column; align-items: center; flex: 1; min-width: 80px; }
+    .control-item span { font-size: 10px; margin-bottom: 4px; }
+    
+    input[type="range"] { 
+        width: 100%; 
+        cursor: pointer; 
+        accent-color: #ffffff; 
+    }
+    
+    button {
+        font-family: 'Dela Gothic One', cursive;
+        padding: 8px 14px; border: none; border-radius: 4px;
+        cursor: pointer; font-size: 11px; transition: 0.2s;
+    }
+    .btn-reset { background: white; color: black; }
+    .btn-download { background: var(--accent); color: white; }
+    .btn-download:hover { background: #45a049; }
+
+    .pfp-hint { font-size: 11px; color: #888; margin-bottom: 15px; font-family: sans-serif; }
+    
+    .canvas-area { background: #000; line-height: 0; border: 1px solid #333; position: relative; }
+    canvas { max-width: 100%; height: auto; cursor: grab; background-color: #000; }
+    canvas:active { cursor: grabbing; }
+</style>
+
+<div class="pfp-container">
+    <div class="pfp-header">
+        <label class="file-input-label">
+            CHOOSE FILE
+            <input type="file" id="upload" accept="image/*" style="display:none" />
+        </label>
+        <div class="control-item">
+            <span>ZOOM</span>
+            <input type="range" id="zoom" min="0.1" max="3" step="0.01" value="0.5">
+        </div>
+        <div class="control-item">
+            <span>ROTATE</span>
+            <input type="range" id="rotate" min="-180" max="180" step="1" value="0">
+        </div>
+        <button id="reset" class="btn-reset">RESET</button>
+        <button id="download" class="btn-download">DOWNLOAD</button>
+    </div>
+
+    <div class="pfp-hint">1. Upload → 2. Drag Hat → 3. Scale & Rotate → 4. Download PFP!</div>
+
+    <div class="canvas-area">
+        <canvas id="canvas" width="512" height="512"></canvas>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+    const upload = document.getElementById("upload");
+    const downloadBtn = document.getElementById("download");
+    const zoomSlider = document.getElementById("zoom");
+    const rotateSlider = document.getElementById("rotate");
+    const resetBtn = document.getElementById("reset");
+
+    const hatOverlay = new Image();
+    // Required to allow the canvas to download an image from a different domain (GitHub)
+    hatOverlay.crossOrigin = "anonymous"; 
+    // Direct raw link to your hat
+    hatOverlay.src = "https://raw.githubusercontent.com/KimmiJimmi/trenchhat/main/hat.png"; 
+
+    let userImage = null;
+    let hatScale = 0.5, hatRotation = 0, hatX = 256, hatY = 200;
+    let isDragging = false, lastX = 0, lastY = 0;
+
+    function draw() {
+        // Ensure background is black
+        ctx.fillStyle = "#000000";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        if (userImage) {
+            const ratio = Math.max(canvas.width / userImage.width, canvas.height / userImage.height);
+            const x = (canvas.width - userImage.width * ratio) / 2;
+            const y = (canvas.height - userImage.height * ratio) / 2;
+            ctx.drawImage(userImage, x, y, userImage.width * ratio, userImage.height * ratio);
+        } else {
+            ctx.fillStyle = "#444";
+            ctx.textAlign = "center";
+            ctx.font = "14px Arial";
+            ctx.fillText("Upload photo to start", 256, 256);
+        }
+
+        if (hatOverlay.complete) {
+            const w = hatOverlay.width * hatScale, h = hatOverlay.height * hatScale;
+            ctx.save();
+            ctx.translate(hatX, hatY);
+            ctx.rotate((hatRotation * Math.PI) / 180);
+            ctx.drawImage(hatOverlay, -w / 2, -h / 2, w, h);
+            ctx.restore();
+        }
+    }
+
+    upload.onchange = (e) => {
+        if (!e.target.files[0]) return;
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+            userImage = new Image();
+            userImage.onload = draw;
+            userImage.src = ev.target.result;
+        };
+        reader.readAsDataURL(e.target.files[0]);
+    };
+
+    zoomSlider.oninput = (e) => { hatScale = parseFloat(e.target.value); draw(); };
+    rotateSlider.oninput = (e) => { hatRotation = parseInt(e.target.value); draw(); };
+    
+    resetBtn.onclick = () => { 
+        hatScale = 0.5; hatRotation = 0; hatX = 256; hatY = 200; 
+        zoomSlider.value = 0.5; rotateSlider.value = 0; 
+        draw(); 
+    };
+
+    const startDrag = (x, y) => { isDragging = true; lastX = x; lastY = y; };
+    const moveDrag = (x, y) => { 
+        if (isDragging) { 
+            hatX += x - lastX; 
+            hatY += y - lastY; 
+            lastX = x; 
+            lastY = y; 
+            draw(); 
+        }
+    };
+
+    // Interaction Listeners
+    canvas.onmousedown = (e) => startDrag(e.offsetX, e.offsetY);
+    window.onmousemove = (e) => { 
+        if(isDragging) { 
+            const rect = canvas.getBoundingClientRect();
+            moveDrag(e.clientX - rect.left, e.clientY - rect.top);
+        }
+    };
+    window.onmouseup = () => isDragging = false;
+
+    canvas.ontouchstart = (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const t = e.touches[0];
+        startDrag(t.clientX - rect.left, t.clientY - rect.top);
+        e.preventDefault();
+    };
+    canvas.ontouchmove = (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const t = e.touches[0];
+        moveDrag(t.clientX - rect.left, t.clientY - rect.top);
+        e.preventDefault();
+    };
+
+    downloadBtn.onclick = () => {
+        if (!userImage) return alert("Please upload an image first.");
+        const link = document.createElement("a");
+        link.download = "trench-pfp.png";
+        link.href = canvas.toDataURL("image/png");
+        link.click();
+    };
+
+    hatOverlay.onload = draw;
+</script>
